@@ -9,26 +9,33 @@ import {
 
 declare const moment: any;
 
-interface AutoTimeLogger {
+interface AutoTimestampSettings {
 	timeFormat: string;
 	autoInsert: boolean;
 	timeStyle: "plain" | "bold" | "bold-gray";
+	customPrefix: string;
+	customSuffix: string;
+	useCustomFormat: boolean;
 }
 
-const DEFAULT_SETTINGS: AutoTimeLogger = {
+const DEFAULT_SETTINGS: AutoTimestampSettings = {
 	timeFormat: "HH:mm",
 	autoInsert: true,
 	timeStyle: "bold-gray",
+	customPrefix: "",
+	customSuffix: " - ",
+	useCustomFormat: false,
 };
 
-export default class AutoTimeLoggerPlugin extends Plugin {
-	settings: AutoTimeLogger = DEFAULT_SETTINGS;
+export default class AutoTimestampPlugin extends Plugin {
+	settings: AutoTimestampSettings = DEFAULT_SETTINGS;
+	private styleEl: HTMLStyleElement | null = null; // Явная инициализация null
 
 	async onload() {
-		console.log("Formatted Timestamp plugin loaded");
+		console.log("Advanced Timestamp plugin loaded");
 		await this.loadSettings();
 
-		this.addSettingTab(new AutoTimeLoggerSettingTab(this.app, this));
+		this.addSettingTab(new TimestampSettingTab(this.app, this));
 
 		this.registerDomEvent(document, "keydown", (evt: KeyboardEvent) => {
 			if (evt.key === "Enter" && this.settings.autoInsert) {
@@ -41,23 +48,22 @@ export default class AutoTimeLoggerPlugin extends Plugin {
 			name: "Insert formatted timestamp",
 			hotkeys: [{ modifiers: ["Mod", "Shift"], key: "T" }],
 			editorCallback: (editor: Editor) => {
-				this.insertFormattedTimeLogger(editor);
+				this.insertFormattedTimestamp(editor);
 			},
 		});
 
-		// Добавляем CSS стили для форматирования
 		this.addStyle();
 	}
 
 	addStyle() {
-		const style = document.createElement("style");
-		style.textContent = `
+		this.styleEl = document.createElement("style");
+		this.styleEl.textContent = `
             .timestamp-gray {
                 color: var(--text-muted);
                 font-weight: bold;
             }
         `;
-		document.head.appendChild(style);
+		document.head.appendChild(this.styleEl);
 	}
 
 	handleNewLineInsertion() {
@@ -69,13 +75,13 @@ export default class AutoTimeLoggerPlugin extends Plugin {
 		const lineText = editor.getLine(cursor.line);
 
 		if (lineText.trim() === "") {
-			this.insertFormattedTimeLogger(editor);
+			this.insertFormattedTimestamp(editor);
 		}
 	}
 
-	insertFormattedTimeLogger(editor: Editor) {
+	insertFormattedTimestamp(editor: Editor) {
 		const cursor = editor.getCursor();
-		const timestamp = this.getFormattedTimeLogger();
+		const timestamp = this.getFormattedTimestamp();
 
 		editor.replaceRange(timestamp, { line: cursor.line, ch: 0 });
 		editor.setCursor({
@@ -84,16 +90,27 @@ export default class AutoTimeLoggerPlugin extends Plugin {
 		});
 	}
 
-	getFormattedTimeLogger(): string {
+	getFormattedTimestamp(): string {
 		const time = window.moment().format(this.settings.timeFormat);
+		let formattedTime = time;
 
 		switch (this.settings.timeStyle) {
 			case "bold":
-				return `**${time}** - `;
+				formattedTime = `**${time}**`;
+				break;
 			case "bold-gray":
-				return `<span class="timestamp-gray">${time}</span> - `;
-			default:
-				return `${time} - `;
+				formattedTime = `<span class="timestamp-gray">${time}</span>`;
+				break;
+		}
+
+		if (this.settings.useCustomFormat) {
+			return (
+				this.settings.customPrefix +
+				formattedTime +
+				this.settings.customSuffix
+			);
+		} else {
+			return formattedTime + " - ";
 		}
 	}
 
@@ -110,14 +127,17 @@ export default class AutoTimeLoggerPlugin extends Plugin {
 	}
 
 	onunload() {
-		console.log("Formatted Timestamp plugin unloaded");
+		console.log("Advanced Timestamp plugin unloaded");
+		if (this.styleEl) {
+			this.styleEl.remove();
+		}
 	}
 }
 
-class AutoTimeLoggerSettingTab extends PluginSettingTab {
-	plugin: AutoTimeLoggerPlugin;
+class TimestampSettingTab extends PluginSettingTab {
+	plugin: AutoTimestampPlugin;
 
-	constructor(app: App, plugin: AutoTimeLoggerPlugin) {
+	constructor(app: App, plugin: AutoTimestampPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -153,6 +173,47 @@ class AutoTimeLoggerSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					})
 			);
+
+		new Setting(containerEl)
+			.setName("Use custom format")
+			.setDesc("Enable to use custom prefix/suffix")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.useCustomFormat)
+					.onChange(async (value) => {
+						this.plugin.settings.useCustomFormat = value;
+						await this.plugin.saveSettings();
+						this.display();
+					})
+			);
+
+		if (this.plugin.settings.useCustomFormat) {
+			new Setting(containerEl)
+				.setName("Custom prefix")
+				.setDesc("Text to insert before time")
+				.addText((text) =>
+					text
+						.setPlaceholder("")
+						.setValue(this.plugin.settings.customPrefix)
+						.onChange(async (value) => {
+							this.plugin.settings.customPrefix = value;
+							await this.plugin.saveSettings();
+						})
+				);
+
+			new Setting(containerEl)
+				.setName("Custom suffix")
+				.setDesc("Text to insert after time")
+				.addText((text) =>
+					text
+						.setPlaceholder(" - ")
+						.setValue(this.plugin.settings.customSuffix)
+						.onChange(async (value) => {
+							this.plugin.settings.customSuffix = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
 
 		new Setting(containerEl)
 			.setName("Auto insert")
