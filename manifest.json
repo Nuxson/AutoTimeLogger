@@ -1,0 +1,10 @@
+{
+	"id": "auto-time-logger",
+	"name": "Auto Time Logger",
+	"version": "1.0.0",
+	"minAppVersion": "0.12.0",
+	"description": "Automatically inserts timestamps when starting a new line.",
+	"author": "Nuxson",
+	"authorUrl": "",
+	"main": "main.js"
+}
